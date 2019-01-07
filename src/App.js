@@ -2,12 +2,20 @@ import React from 'react'
 import { observer } from 'mobx-react'
 import { observable, action } from 'mobx'
 import Json from "circular-json"
+import { findDOMNode } from 'react-dom'
 
 const Row = ({intent}) => {
     const style = {
         margin: 5
     }
-    return <div style={style}>{intent}</div>
+    return (
+        <div style={style}>
+            {intent.text}
+            <ul>
+                {intent.entities.map( entity => <li>{`Entity: Value: ${entity.value} |  Name: ${entity.entity}`}</li>)}
+            </ul>
+        </div>
+    )
 }
 
 
@@ -15,18 +23,64 @@ const Row = ({intent}) => {
 class App extends React.Component{
 
     @observable intents = []
-    @observable currentIntent = ""
+    @observable currentIntent = {text: "", entities: []}
     @observable intentName = ""
+    @observable currentSelection = {text: "", start: undefined, end: undefined}
+    @observable currentEntity = ""
+
+    componentDidMount(){
+        document.addEventListener('selectionchange', () => {
+            const selection = window.getSelection()
+      
+            if (
+                selection.anchorNode
+                && selection.anchorNode === this.selectionAnchorNode
+            ) {
+                this.setSelection(this.inputNode.selectionStart, this.inputNode.selectionEnd)
+            }
+          }, false)
+    }
+
+    @action
+    setSelection( start, end ){
+        let text = this.inputNode.value.substring(start, end)
+        let selection = {
+            text,
+            start,
+            end
+        }
+        if(selection != ""){
+            this.currentSelection = selection
+        }
+    }
+
+    @action
+    handleEntityChange = (e) =>{
+        this.currentEntity = e.target.value
+    }
 
     @action
     addIntent = () => {
         this.intents.push(this.currentIntent)
-        this.currentIntent = ""
+        this.currentIntent = {name: "", entities: []}
+        this.currentSelection = {text: "", start: undefined, end: undefined}
     }
 
     @action
     handleTextChange = (e) => {
-        this.currentIntent = e.target.value
+        //console.log(e.target.selectionStart)
+        this.currentIntent.text = e.target.value
+    }
+
+    @action 
+    addEntity = () =>{
+        let obj = {
+            start: this.currentSelection.start,
+            end: this.currentSelection.end,
+            value: this.currentSelection.text,
+            entity: this.currentEntity
+        }
+        this.currentIntent.entities.push(obj)
     }
 
     @action
@@ -59,11 +113,10 @@ class App extends React.Component{
 
         for (let intent of this.intents){
             const example = {
-                text: intent,
+                ...intent,
                 intent: this.intentName,
-                entities: []
             }
-            data.rasa_nlu_data.common_examples.push(example)
+            data.rasa_nlu_data.common_examples.push(intent)
         }
 
         console.log(Json.stringify(data))
@@ -89,9 +142,26 @@ class App extends React.Component{
         }
       }
 
-    
+      getSelectionText = () => {
+        var text = "";
+        var activeEl = document.activeElement;
+        var activeElTagName = activeEl ? activeEl.tagName.toLowerCase() : null;
+        if (
+          (activeElTagName == "textarea") || (activeElTagName == "input" &&
+          /^(?:text|search|password|tel|url)$/i.test(activeEl.type)) &&
+          (typeof activeEl.selectionStart == "number")
+        ) {
+            text = activeEl.value.slice(activeEl.selectionStart, activeEl.selectionEnd);
+        } else if (window.getSelection) {
+            text = window.getSelection().toString();
+        }
+        console.log(text)
+        return text;
+    }
+
 
     render(){
+        console.log(this.currentIntent)
         return(
             <div> 
                 <div> 
@@ -107,12 +177,29 @@ class App extends React.Component{
                 <form
                     onSubmit={this.addIntent}
                     onKeyDown={(e) => { this.handleKeyDown(e, this.addIntent); }}>
-                        <div>
+                        <div ref={node => this.selectionAnchorNode = node}>
                             <label style={{float: "left"}}> Intent Example: </label>
-                            <input onChange={this.handleTextChange} value={this.currentIntent}/>
+                            <input 
+                                ref={node => this.inputNode = node && findDOMNode(node)}
+                                onFocus={this.handleFocus} 
+                                onChange={this.handleTextChange} 
+                                value={this.currentIntent.text}/>
                             <button type="submit" > Add </button>
                         </div>
                 </form>
+                <div style={{height: "150px", width: "400px"}}> 
+                    { this.currentSelection.text != "" && 
+                        <div>
+                            <ul>
+                                {this.currentIntent.entities.map( entity => <li>{`${entity.entity} = ${entity.value}`}</li>)}
+                            </ul>
+                            <input
+                                onChange={this.handleEntityChange}
+                                value={this.currentEntity}
+                            />
+                           <button onClick={this.addEntity}> {`Add Entity for ${this.currentSelection.text}`}</button>
+                        </div>}
+                </div>
             </div>
             </div>
         )
